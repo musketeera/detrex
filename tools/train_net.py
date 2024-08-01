@@ -276,8 +276,11 @@ def do_train(args, cfg):
 
 
 def main(args):
+    # 导入配置文件py
     cfg = LazyConfig.load(args.config_file)
+    # 修改配置文件
     cfg = LazyConfig.apply_overrides(cfg, args.opts)
+    # 初始化配置文件
     default_setup(cfg, args)
     
     # Enable fast debugging by running several iterations to check for any bugs.
