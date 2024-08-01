@@ -185,20 +185,20 @@ def do_train(args, cfg):
     """
     Args:
         cfg: an object with the following attributes:
-            model: instantiate to a module
-            dataloader.{train,test}: instantiate to dataloaders
-            dataloader.evaluator: instantiate to evaluator for test set
-            optimizer: instantaite to an optimizer
-            lr_multiplier: instantiate to a fvcore scheduler
+            model: instantiate to a module 实例化模型
+            dataloader.{train,test}: instantiate to dataloaders 实例化数据加载器
+            dataloader.evaluator: instantiate to evaluator for test set 实例化评估器
+            optimizer: instantaite to an optimizer 实例化优化器
+            lr_multiplier: instantiate to a fvcore scheduler 实例化学习率调度器
             train: other misc config defined in `configs/common/train.py`, including:
-                output_dir (str)
-                init_checkpoint (str)
-                amp.enabled (bool)
-                max_iter (int)
-                eval_period, log_period (int)
-                device (str)
-                checkpointer (dict)
-                ddp (dict)
+                output_dir (str) 输出目录
+                init_checkpoint (str) 预训练权重路径
+                amp.enabled (bool) 是否使用混合精度训练
+                max_iter (int) 最大迭代次数
+                eval_period, log_period (int) 评估周期，日志周期
+                device (str) 设备
+                checkpointer (dict) 保存模型时间点
+                ddp (dict) 分布式训练
     """
     model = instantiate(cfg.model)
     logger = logging.getLogger("detectron2")
@@ -216,6 +216,7 @@ def do_train(args, cfg):
     model = create_ddp_model(model, **cfg.train.ddp)
 
     # build model ema
+    # 移动平均更新模型的参数
     ema.may_build_model_ema(cfg, model)
 
     trainer = Trainer(
@@ -223,6 +224,7 @@ def do_train(args, cfg):
         dataloader=train_loader,
         optimizer=optim,
         amp=cfg.train.amp.enabled,
+        # 训练中使用梯度裁剪
         clip_grad_params=cfg.train.clip_grad.params if cfg.train.clip_grad.enabled else None,
     )
     
@@ -234,6 +236,7 @@ def do_train(args, cfg):
         **ema.may_get_ema_checkpointer(cfg, model)
     )
 
+    # 记录和输出日志信息
     if comm.is_main_process():
         # writers = default_writers(cfg.train.output_dir, cfg.train.max_iter)
         output_dir = cfg.train.output_dir
@@ -247,15 +250,22 @@ def do_train(args, cfg):
             PathManager.mkdirs(cfg.train.wandb.params.dir)
             writers.append(WandbWriter(cfg))
 
+    # 注册钩子
     trainer.register_hooks(
         [
+            # 这个钩子用于计时每次迭代的时间，帮助监控训练速度和性能
             hooks.IterationTimer(),
+            # 注册 EMA 钩子。这个钩子在每次迭代后更新 EMA 模型的参数
             ema.EMAHook(cfg, model) if cfg.train.model_ema.enabled else None,
+            # 注册学习率调度器钩子，用于在训练过程中调整学习率
             hooks.LRScheduler(scheduler=instantiate(cfg.lr_multiplier)),
+            # 如果是主进程，则注册周期性检查点钩子。这个钩子定期保存模型的检查点，以便在训练中断时可以恢复
             hooks.PeriodicCheckpointer(checkpointer, **cfg.train.checkpointer)
             if comm.is_main_process()
             else None,
+            # 注册评估钩子，每隔 cfg.train.eval_period 次迭代进行一次模型评估
             hooks.EvalHook(cfg.train.eval_period, lambda: do_test(cfg, model)),
+            # 如果是主进程，则注册周期性日志记录钩子
             hooks.PeriodicWriter(
                 writers,
                 period=cfg.train.log_period,
@@ -284,6 +294,7 @@ def main(args):
     default_setup(cfg, args)
     
     # Enable fast debugging by running several iterations to check for any bugs.
+    # 快速调试模式
     if cfg.train.fast_dev_run.enabled:
         cfg.train.max_iter = 20
         cfg.train.eval_period = 10
@@ -295,13 +306,16 @@ def main(args):
         model = create_ddp_model(model)
         
         # using ema for evaluation
+        # 使用 EMA（Exponential Moving Average）进行评估 
         ema.may_build_model_ema(cfg, model)
         DetectionCheckpointer(model, **ema.may_get_ema_checkpointer(cfg, model)).load(cfg.train.init_checkpoint)
         # Apply ema state for evaluation
+        # 应用 EMA 状态进行评估
         if cfg.train.model_ema.enabled and cfg.train.model_ema.use_ema_weights_for_eval_only:
             ema.apply_model_ema(model)
         print(do_test(cfg, model, eval_only=True))
     else:
+        # 否则进行训练
         do_train(args, cfg)
 
 
