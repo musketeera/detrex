@@ -66,6 +66,7 @@ class Trainer(SimpleTrainer):
             assert not (model.device_ids and len(model.device_ids) > 1), unsupported
         assert not isinstance(model, DataParallel), unsupported
 
+        # 初始化 AMP 和梯度缩放器
         if amp:
             if grad_scaler is None:
                 from torch.cuda.amp import GradScaler
@@ -77,6 +78,7 @@ class Trainer(SimpleTrainer):
         self.amp = amp
 
         # gradient clip hyper-params
+        # 设置梯度裁剪参数
         self.clip_grad_params = clip_grad_params
 
     def run_step(self):
@@ -97,6 +99,7 @@ class Trainer(SimpleTrainer):
         """
         If you want to do something with the losses, you can wrap the model.
         """
+        # 在 AMP 模式下计算损失
         with autocast(enabled=self.amp):
             loss_dict = self.model(data)
             if isinstance(loss_dict, torch.Tensor):
@@ -112,11 +115,13 @@ class Trainer(SimpleTrainer):
         self.optimizer.zero_grad()
 
         if self.amp:
+            # 缩放损失并反向传播
             self.grad_scaler.scale(losses).backward()
             if self.clip_grad_params is not None:
                 self.grad_scaler.unscale_(self.optimizer)
                 self.clip_grads(self.model.parameters())
             self.grad_scaler.step(self.optimizer)
+            # 更新优化器
             self.grad_scaler.update()
         else:
             losses.backward()
@@ -124,11 +129,13 @@ class Trainer(SimpleTrainer):
                 self.clip_grads(self.model.parameters())
             self.optimizer.step()
 
+        # 记录损失和数据加载时间
         self._write_metrics(loss_dict, data_time)
 
     def clip_grads(self, params):
         params = list(filter(lambda p: p.requires_grad and p.grad is not None, params))
         if len(params) > 0:
+            # 裁剪梯度
             return torch.nn.utils.clip_grad_norm_(
                 parameters=params,
                 **self.clip_grad_params,
@@ -141,6 +148,7 @@ class Trainer(SimpleTrainer):
         return ret
 
     def load_state_dict(self, state_dict):
+        # 加载父类的状态字典
         super().load_state_dict(state_dict)
         if self.grad_scaler and self.amp:
             self.grad_scaler.load_state_dict(state_dict["grad_scaler"])
