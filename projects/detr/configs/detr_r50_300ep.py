@@ -1,7 +1,8 @@
 from detrex.config import get_config
 from .models.detr_r50 import model
 
-dataloader = get_config("common/data/coco_detr.py").dataloader
+dataloader = get_config("common/data/speedplus_detr.py").dataloader
+# dataloader = get_config("common/data/coco_detr.py").dataloader
 lr_multiplier = get_config("common/coco_schedule.py").lr_multiplier_50ep
 optimizer = get_config("common/optim.py").AdamW
 train = get_config("common/train.py").train
@@ -20,4 +21,4 @@ optimizer.params.lr_factor_func = lambda module_name: 0.1 if "backbone" in modul
 
 # modify dataloader config
 dataloader.train.num_workers = 16
-dataloader.train.total_batch_size = 64
+dataloader.train.total_batch_size = 4
