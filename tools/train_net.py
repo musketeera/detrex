@@ -100,7 +100,7 @@ class Trainer(SimpleTrainer):
         If you want to do something with the losses, you can wrap the model.
         """
         # 在 AMP 模式下计算损失
-        with autocast(device_type='cuda', enabled=self.amp):
+        with torch.amp.autocast('cuda', enabled=self.amp):
             loss_dict = self.model(data)
             if isinstance(loss_dict, torch.Tensor):
                 losses = loss_dict
